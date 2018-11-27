@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.regex.Pattern;
 
 /**
@@ -74,6 +76,8 @@ import java.util.regex.Pattern;
 public class ConfigDef {
 
     private static final Pattern COMMA_WITH_WHITESPACE = Pattern.compile("\\s*,\\s*");
+    private static final Pattern EQUAL_WITH_WHITESPACE = Pattern.compile("\\s*=\\s*");
+    private static final Pattern SEMICOLON_WITH_WHITESPACE = Pattern.compile("\\s*;\\s*");
 
     /**
      * A unique Java object which represents the lack of a default value.
@@ -702,6 +706,25 @@ public class ConfigDef {
                             return Arrays.asList(COMMA_WITH_WHITESPACE.split(trimmed, -1));
                     else
                         throw new ConfigException(name, value, "Expected a comma separated list.");
+                case MAP:
+                    if (value instanceof HashMap)
+                        return value;
+                    else if (value instanceof String)
+                        if (trimmed.isEmpty())
+                            return Collections.<String, String>emptyMap();
+                        else
+                            return Stream.of(SEMICOLON_WITH_WHITESPACE.split(trimmed, -1))
+                                .map(entry -> EQUAL_WITH_WHITESPACE.split(entry, -1))
+                                .collect(Collectors.toMap(entry -> entry[0], entry -> {
+                                    try {
+                                        return entry[1];
+                                    } catch (ArrayIndexOutOfBoundsException e) {
+                                        throw new ConfigException(name, value, "Expected equal separated map entries (e.g. 'key=value')");
+                                    }
+                                }
+                                ));
+                    else
+                        throw new ConfigException(name, value, "Expected an equal and semi-colon separated map (e.g. 'key1=value1;key2=value2').");
                 case CLASS:
                     if (value instanceof Class)
                         return value;
@@ -740,6 +763,9 @@ public class ConfigDef {
             case LIST:
                 List<?> valueList = (List<?>) parsedValue;
                 return Utils.join(valueList, ",");
+            case MAP:
+                Map<?, ?> valueMap = (HashMap<?, ?>) parsedValue;
+                return Utils.mkString(valueMap, "", "", "=", ";");
             case CLASS:
                 Class<?> clazz = (Class<?>) parsedValue;
                 return clazz.getName();
@@ -776,7 +802,7 @@ public class ConfigDef {
      * The config types
      */
     public enum Type {
-        BOOLEAN, STRING, INT, SHORT, LONG, DOUBLE, LIST, CLASS, PASSWORD
+        BOOLEAN, STRING, INT, SHORT, LONG, DOUBLE, LIST, MAP, CLASS, PASSWORD
     }
 
     /**
@@ -884,6 +910,32 @@ public class ConfigDef {
                 return "[" + min + ",...]";
             else
                 return "[" + min + ",...," + max + "]";
+        }
+    }
+
+    public static class ValidMap implements Validator {
+
+        final ValidString validKey;
+
+        private ValidMap(List<String> validKeys) {
+            this.validKey = new ValidString(validKeys);
+        }
+
+        public static ValidMap keys(String... validKeys) {
+            return new ValidMap(Arrays.asList(validKeys));
+        }
+
+        @Override
+        public void ensureValid(final String name, final Object value) {
+            @SuppressWarnings("unchecked")
+            Map<String, String> entries = (HashMap<String, String>) value;
+            for (String key : entries.keySet()) {
+                validKey.ensureValid(name, key);
+            }
+        }
+
+        public String toString() {
+            return validKey.toString();
         }
     }
 

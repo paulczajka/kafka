@@ -55,7 +55,8 @@ public class ConfigDefTest {
                                        .define("g", Type.BOOLEAN, Importance.HIGH, "docs")
                                        .define("h", Type.BOOLEAN, Importance.HIGH, "docs")
                                        .define("i", Type.BOOLEAN, Importance.HIGH, "docs")
-                                       .define("j", Type.PASSWORD, Importance.HIGH, "docs");
+                                       .define("j", Type.PASSWORD, Importance.HIGH, "docs")
+                                       .define("k", Type.MAP, Importance.HIGH, "docs");
 
         Properties props = new Properties();
         props.put("a", "1   ");
@@ -67,6 +68,7 @@ public class ConfigDefTest {
         props.put("h", "FalSE");
         props.put("i", "TRUE");
         props.put("j", "password");
+        props.put("k", "a = 1 ; b= 2; c =3 ;d=4");
 
         Map<String, Object> vals = def.parse(props);
         assertEquals(1, vals.get("a"));
@@ -80,6 +82,12 @@ public class ConfigDefTest {
         assertEquals(true, vals.get("i"));
         assertEquals(new Password("password"), vals.get("j"));
         assertEquals(Password.HIDDEN, vals.get("j").toString());
+        assertEquals(new HashMap<String, String>() {{
+                    put("a", "1");
+                    put("b", "2");
+                    put("c", "3");
+                    put("d", "4");
+            }}, vals.get("k"));
     }
 
     @Test(expected = ConfigException.class)
@@ -120,6 +128,7 @@ public class ConfigDefTest {
         testBadInputs(Type.LIST, 53, new Object());
         testBadInputs(Type.BOOLEAN, "hello", "truee", "fals");
         testBadInputs(Type.CLASS, "ClassDoesNotExist");
+        testBadInputs(Type.MAP, 40, new Object(), "a;b=2");
     }
 
     private void testBadInputs(Type type, Object... values) {
@@ -164,6 +173,7 @@ public class ConfigDefTest {
         testValidators(Type.STRING, new ConfigDef.NonEmptyStringWithoutControlChars(), "defaultname",
                 new Object[]{"test", "name", "test/test", "test\u1234", "\u1324name\\", "/+%>&):??<&()?-", "+1", "\uD83D\uDE01", "\uF3B1", "     test   \n\r", "\n  hello \t"},
                 new Object[]{"nontrailing\nnotallowed", "as\u0001cii control char", "tes\rt", "test\btest", "1\t2", ""});
+        testValidators(Type.MAP, ConfigDef.ValidMap.keys("good", "keys", "default"), "default=1", new Object[]{"good=1", "good=a;keys=2;default=test"}, new Object[] {"bad=keys", "nope=1;keys=2;default=3"});
     }
 
     @Test
@@ -484,7 +494,11 @@ public class ConfigDefTest {
         final ConfigDef def = new ConfigDef()
                 .define("opt1", Type.STRING, "a", ValidString.in("a", "b", "c"), Importance.HIGH, "docs1")
                 .define("opt2", Type.INT, Importance.MEDIUM, "docs2")
-                .define("opt3", Type.LIST, Arrays.asList("a", "b"), Importance.LOW, "docs3");
+                .define("opt3", Type.LIST, Arrays.asList("a", "b"), Importance.LOW, "docs3")
+                .define("opt4", Type.MAP, new HashMap<String, String>() {{
+                        put("a", "1");
+                        put("b", "2");
+                    }}, Importance.HIGH, "docs4");
 
         final String expectedRst = "" +
                 "``opt2``\n" +
@@ -499,6 +513,13 @@ public class ConfigDefTest {
                 "  * Type: string\n" +
                 "  * Default: a\n" +
                 "  * Valid Values: [a, b, c]\n" +
+                "  * Importance: high\n" +
+                "\n" +
+                "``opt4``\n" +
+                "  docs4\n" +
+                "\n" +
+                "  * Type: map\n" +
+                "  * Default: a=1;b=2\n" +
                 "  * Importance: high\n" +
                 "\n" +
                 "``opt3``\n" +
@@ -620,6 +641,16 @@ public class ConfigDefTest {
     public void testConvertValueToStringList() {
         assertEquals("a,bc,d", ConfigDef.convertToString(Arrays.asList("a", "bc", "d"), Type.LIST));
         assertNull(ConfigDef.convertToString(null, Type.LIST));
+    }
+
+    @Test
+    public void testConvertValueToStringMap() {
+        assertEquals("a=1;b=2;c=3", ConfigDef.convertToString(new HashMap<String, String>() {{
+                put("a", "1");
+                put("b", "2");
+                put("c", "3");
+            }}, Type.MAP));
+        assertNull(ConfigDef.convertToString(null, Type.MAP));
     }
 
     @Test
